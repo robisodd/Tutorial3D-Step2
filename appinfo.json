@@ -1,0 +1,29 @@
+{
+    "appKeys": {},
+    "capabilities": [
+        ""
+    ],
+    "companyName": "robisodd",
+    "longName": "Tutorial 3D - Step 2",
+    "projectType": "native",
+    "resources": {
+        "media": [
+            {
+                "file": "images/brick.png",
+                "name": "BRICK",
+                "type": "png-trans"
+            }
+        ]
+    },
+    "sdkVersion": "3",
+    "shortName": "Tutorial 3D - Step 2",
+    "targetPlatforms": [
+        "aplite",
+        "basalt"
+    ],
+    "uuid": "7dda22c6-836a-4442-a3e6-72eb5b87d7fa",
+    "versionLabel": "1.0",
+    "watchapp": {
+        "watchface": false
+    }
+}
