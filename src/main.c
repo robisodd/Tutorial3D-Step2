@@ -3,10 +3,10 @@
 #define IDCLIP false                               // Walk thru walls if true
 Window *window;                                    // The main window and canvas. Drawing to root layer.
 GBitmap *texture;                                  // For this example, must be a 1-bit Texture
-int32_t player_x = 32 * MAP_SIZE, player_y = -128; // Player's X And Y Starting Position (64 pixels per square)
-int16_t player_facing = 16384;                     // Player Direction Facing [-32768 to 32767]
-uint32_t offset=0, *data;                          // Used for rendering texture
-uint8_t map[MAP_SIZE * MAP_SIZE];                  // 0 is space, any other number is a wall
+int32_t player_x = 32 * MAP_SIZE, player_y = -128; // Player's X And Y Pixel Starting Position (64 pixels per square)
+int16_t player_facing = 16384;                     // Player Direction Facing: Angle = [-32768 to 32767]
+uint32_t offset=0, *data;                          // Used for rendering texture (data points to first byte of texture, offset is which column in texture to draw)
+uint8_t map[MAP_SIZE * MAP_SIZE];                  // 0 is space, any other number is a wall.
 
 int32_t abs32(int32_t a) {return (a^(a>>31)) - (a>>31);}  // returns absolute value of a (only works on 32bit signed)
 
@@ -15,7 +15,7 @@ uint8_t getmap(int32_t x, int32_t y) {
   return (x<0 || x>=MAP_SIZE || y<0 || y>=MAP_SIZE) ? 0 : map[(y * MAP_SIZE) + x];
 }
 
-void main_loop(void *data) { 
+void main_loop(void *data) {
   AccelData accel=(AccelData){.x=0, .y=0, .z=0};    // all three are int16_t
   accel_service_peek(&accel);                       // read accelerometer, use y to walk and x to rotate. discard z.
   int32_t dx = (cos_lookup(player_facing) * (accel.y>>5)) / TRIG_MAX_RATIO;  // x distance player attempts to walk
@@ -27,7 +27,7 @@ void main_loop(void *data) {
   app_timer_register(50, main_loop, NULL);          // Schedule a Loop in 50ms (~20fps)
 }
 
-uint32_t shoot_ray(int32_t start_x, int32_t start_y, int32_t angle) {
+uint32_t shoot_ray(int32_t start_x, int32_t start_y, int32_t angle) {  // Shoot ray starting at START_X, START_Y at direction ANGLE, returns distance to first wall ray hits
   int32_t rx, ry, sin, cos, dx, dy, nx, ny, dist;     // ray x&y, sine & cosine, difference x&y, next x&y, ray length
   sin = sin_lookup(angle); cos = cos_lookup(angle);   // save now to make quicker
   rx = start_x; ry = start_y;                         // Put ray at start
@@ -60,14 +60,14 @@ uint32_t shoot_ray(int32_t start_x, int32_t start_y, int32_t angle) {
 void layer_update_proc(Layer *me, GContext *ctx) {
   uint8_t  *screen8  =  (uint8_t*)*(size_t*)ctx;                        //  8bit Pointer to Framebuffer (i.e. screen RAM), for color use
   uint32_t *screen32 = (uint32_t*)*(size_t*)ctx;                        // 32bit Pointer to Framebuffer (i.e. screen RAM), for b&w use
-  for(int16_t i = 0; i < 168*PBL_IF_BW_ELSE(5, 36); ++i)                // For every pixel on the screen (36 32bit uints per row. = 144/4)
+  for(int16_t i = 0; i < 168*PBL_IF_BW_ELSE(5, 36); ++i)                // Fill every pixel on the screen (36 32bit uints per row. = 144/4)
     screen32[i]=PBL_IF_BW_ELSE(0, (i<168/2*36)?0xC3C3C3C3:0xC8C8C8C8);  // Black background on B&W, Blue Sky w/ Green Floor on Color.
-  for(int16_t x = 0; x < 144; ++x) {                                    // Begin RayTracing Loop
+  for(int16_t x = 0; x < 144; ++x) {                                    // Begin RayTracing Loop.  For each column x on the screen...
     int16_t angle = atan2_lookup((64*x/144)-32, 64);                    // Angle away from [+/-] center column: dx = (64*(col-(box.size.w/2)))/box.size.w; dy = 64; angle = atan2_lookup(dx, dy);
     int32_t dist = shoot_ray(player_x, player_y, player_facing + angle) * cos_lookup(angle); // Shoot the ray, get distance to nearest wall.  Multiply dist by cos to stop fisheye lens.
     int16_t colheight = (168 << 21) / (dist);  // wall segment height = screenheight * wallheight * 64(the "zoom factor") / (distance >> 16) (>>16 is basically quickly doing "/TRIG_MAX_RATIO")
     if(colheight>84) colheight=84;                                      // Make sure line isn't drawn beyond screen edge
-    int16_t addr = PBL_IF_BW_ELSE((x>>5) + (168/2*5), x + (168/2*144)); // address of pixel vertically centered at X. (Address=xaddr + yaddr = Pixel.X + 144*Pixel.Y)
+    int16_t addr = PBL_IF_BW_ELSE((x>>5) + (168/2*5), x + (168/2*144)); // memory address containing pixel vertically centered at X. (Address=xaddr + yaddr = Pixel.X + 144*Pixel.Y)
     for(int16_t y=0, yoffset=0; y<colheight; y++, yoffset+=PBL_IF_BW_ELSE(5,144)) {
       int32_t xoffset = (y * dist / 168) >> 16;                         // xoffset = which pixel of the texture is hit (0-31).
       PBL_IF_BW_ELSE(screen32[addr-yoffset]|=((*(data+(offset*2)  )>>(31-xoffset))&1)<<(x&31), screen8[addr-yoffset]=((*(data+offset*2  )>>(31-xoffset))&1)?0b11110000:0b11000000);  // Draw Top Half of wall
@@ -90,7 +90,7 @@ int main(void) {
   srand(time(NULL));                           // Seed randomizer so different map every time
   for (int16_t i=0; i<MAP_SIZE*MAP_SIZE; i++)  // generate a randomly dotted map
     map[i] = (rand()%3==0) ? 255 : 0;          // Randomly 1/3 of spots are blocks
-  data = (uint32_t*)gbitmap_get_data(texture=gbitmap_create_with_resource(RESOURCE_ID_BRICK_WHITE));
+  data = (uint32_t*)gbitmap_get_data(texture=gbitmap_create_with_resource(RESOURCE_ID_BRICK_WHITE));  // Load texture, point data to first byte
   app_event_loop();
   gbitmap_destroy(texture);
   accel_data_service_unsubscribe();
